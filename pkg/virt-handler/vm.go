@@ -77,9 +77,12 @@ import (
 
 	ps "github.com/mitchellh/go-ps"
 
+	apimachineryv1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/client-go/log"
+
+	migration "kubevirt.io/kubevirt/pkg/virt-controller/watch"
 
 	containerdisk "kubevirt.io/kubevirt/pkg/container-disk"
 	"kubevirt.io/kubevirt/pkg/controller"
@@ -185,6 +188,7 @@ func NewController(
 	vmiTargetInformer cache.SharedIndexInformer,
 	domainInformer cache.SharedInformer,
 	gracefulShutdownInformer cache.SharedIndexInformer,
+	podInformer cache.SharedIndexInformer,
 	watchdogTimeoutSeconds int,
 	maxDevices int,
 	clusterConfig *virtconfig.ClusterConfig,
@@ -207,6 +211,7 @@ func NewController(
 		vmiTargetInformer:           vmiTargetInformer,
 		domainInformer:              domainInformer,
 		gracefulShutdownInformer:    gracefulShutdownInformer,
+		podInformer:                 podInformer,
 		heartBeatInterval:           1 * time.Minute,
 		watchdogTimeoutSeconds:      watchdogTimeoutSeconds,
 		migrationProxy:              migrationProxy,
@@ -301,6 +306,7 @@ type VirtualMachineController struct {
 	vmiTargetInformer        cache.SharedIndexInformer
 	domainInformer           cache.SharedInformer
 	gracefulShutdownInformer cache.SharedIndexInformer
+	podInformer              cache.SharedIndexInformer
 	launcherClients          virtcache.LauncherClientInfoByVMI
 	heartBeatInterval        time.Duration
 	watchdogTimeoutSeconds   int
@@ -674,6 +680,19 @@ func (d *VirtualMachineController) migrationSourceUpdateVMIStatus(origVMI *v1.Vi
 			log.Log.Object(vmi).Info("Waiting on the target node to observe the migrated domain before performing the handoff")
 		}
 	} else if vmi.Status.MigrationState != nil && targetNodeDetectedDomain {
+		//when domain exist we set migration finished although it could failed.
+		newAnnotations := map[string]string{migration.MigrationPhaseAnn: "succeeded"}
+		pods, err := controller.CurrentVMIPods(vmi, d.podInformer)
+		if err != nil {
+			log.Log.Reason(err).Error("Failed to fetch pods for namespace from cache.")
+			return err
+		}
+		for _, pod := range pods {
+			_, err := d.syncPodAnnotations(pod, newAnnotations)
+			if err != nil {
+				return err
+			}
+		}
 		// this is the migration ACK.
 		// At this point we know that the migration has completed and that
 		// the target node has seen the domain event.
@@ -2597,6 +2616,20 @@ func (d *VirtualMachineController) vmUpdateHelperMigrationSource(origVMI *v1.Vir
 			return err
 		}
 
+		//started migration sync pod
+		newAnnotations := map[string]string{migration.MigrationPhaseAnn: "started"}
+		pods, err := controller.CurrentVMIPods(vmi, d.podInformer)
+		if err != nil {
+			log.Log.Reason(err).Error("Failed to fetch pods for namespace from cache.")
+			return err
+		}
+		for _, pod := range pods {
+			_, err := d.syncPodAnnotations(pod, newAnnotations)
+			if err != nil {
+				return err
+			}
+		}
+
 		err = client.MigrateVirtualMachine(vmi, options)
 		if err != nil {
 			return err
@@ -2708,6 +2741,30 @@ func (d *VirtualMachineController) vmUpdateHelperMigrationTarget(origVMI *v1.Vir
 		return fmt.Errorf("failed to handle post sync migration proxy: %v", err)
 	}
 	return nil
+}
+func (d *VirtualMachineController) syncPodAnnotations(pod *k8sv1.Pod, newAnnotations map[string]string) (*k8sv1.Pod, error) {
+	var patchOps []string
+	for key, newValue := range newAnnotations {
+		if podAnnotationValue, keyExist := pod.Annotations[key]; !keyExist || (keyExist && podAnnotationValue != newValue) {
+			patchOp, err := controller.PrepareAnnotationsPatchAddOp(key, newValue)
+			if err != nil {
+				return nil, err
+			}
+			patchOps = append(patchOps, patchOp)
+		}
+	}
+
+	var patchedPod *k8sv1.Pod
+	patchBytes := controller.GeneratePatchBytes(patchOps)
+	if len(patchBytes) > 0 {
+		var err error
+		patchedPod, err = d.clientset.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, patchBytes, apimachineryv1.PatchOptions{})
+		if err != nil {
+			log.Log.Object(pod).Errorf("failed to sync pod annotations during sync: %v", err)
+			return nil, err
+		}
+	}
+	return patchedPod, nil
 }
 
 func (d *VirtualMachineController) affinePitThread(vmi *v1.VirtualMachineInstance) error {

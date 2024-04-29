@@ -49,7 +49,6 @@ import (
 	"kubevirt.io/client-go/log"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
-	"kubevirt.io/kubevirt/pkg/apimachinery/patch"
 	"kubevirt.io/kubevirt/pkg/controller"
 	"kubevirt.io/kubevirt/pkg/network/namescheme"
 	"kubevirt.io/kubevirt/pkg/network/sriov"
@@ -465,7 +464,7 @@ func (c *VMIController) syncPodAnnotations(pod *k8sv1.Pod, newAnnotations map[st
 	var patchOps []string
 	for key, newValue := range newAnnotations {
 		if podAnnotationValue, keyExist := pod.Annotations[key]; !keyExist || (keyExist && podAnnotationValue != newValue) {
-			patchOp, err := prepareAnnotationsPatchAddOp(key, newValue)
+			patchOp, err := controller.PrepareAnnotationsPatchAddOp(key, newValue)
 			if err != nil {
 				return nil, err
 			}
@@ -776,17 +775,6 @@ func (c *VMIController) updateStatus(vmi *virtv1.VirtualMachineInstance, pod *k8
 	}
 
 	return nil
-}
-
-func prepareAnnotationsPatchAddOp(key, value string) (string, error) {
-	valueBytes, err := json.Marshal(value)
-	if err != nil {
-		return "", fmt.Errorf("failed to prepare new annotation patchOp for key %s: %v", key, err)
-	}
-
-	key = patch.EscapeJSONPointer(key)
-	return fmt.Sprintf(`{ "op": "add", "path": "/metadata/annotations/%s", "value": %s }`, key, string(valueBytes)), nil
-
 }
 
 func preparePodPatch(oldPod, newPod *k8sv1.Pod) ([]byte, error) {

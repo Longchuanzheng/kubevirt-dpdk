@@ -113,6 +113,20 @@ func newHandlerClusterRole() *rbacv1.ClusterRole {
 					"",
 				},
 				Resources: []string{
+					"pods",
+				},
+				Verbs: []string{
+					"list",
+					"watch",
+					//We have to add this, because we want to get migration phase in pod
+					"patch",
+				},
+			},
+			{
+				APIGroups: []string{
+					"",
+				},
+				Resources: []string{
 					"events",
 				},
 				Verbs: []string{

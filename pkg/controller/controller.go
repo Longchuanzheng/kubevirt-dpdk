@@ -21,10 +21,13 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"kubevirt.io/kubevirt/pkg/apimachinery/patch"
 
 	k8sv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -286,6 +289,25 @@ func CurrentVMIPod(vmi *v1.VirtualMachineInstance, podInformer cache.SharedIndex
 	return curPod, nil
 }
 
+func CurrentVMIPods(vmi *v1.VirtualMachineInstance, podInformer cache.SharedIndexInformer) ([]*k8sv1.Pod, error) {
+
+	// Get all pods from the namespace
+	objs, err := podInformer.GetIndexer().ByIndex(cache.NamespaceIndex, vmi.Namespace)
+	if err != nil {
+		return nil, err
+	}
+	pods := []*k8sv1.Pod{}
+	for _, obj := range objs {
+		pod := obj.(*k8sv1.Pod)
+		if !IsControlledBy(pod, vmi) && pod.Status.Phase != k8sv1.PodRunning {
+			continue
+		}
+		pods = append(pods, pod)
+	}
+
+	return pods, nil
+}
+
 func VMIActivePodsCount(vmi *v1.VirtualMachineInstance, vmiPodInformer cache.SharedIndexInformer) int {
 
 	objs, err := vmiPodInformer.GetIndexer().ByIndex(cache.NamespaceIndex, vmi.Namespace)
@@ -418,4 +440,15 @@ func newNetworkInterface(name, netAttachDefName string) (v1.Network, v1.Interfac
 		InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
 	}
 	return network, iface
+}
+
+func PrepareAnnotationsPatchAddOp(key, value string) (string, error) {
+	valueBytes, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("failed to prepare new annotation patchOp for key %s: %v", key, err)
+	}
+
+	key = patch.EscapeJSONPointer(key)
+	return fmt.Sprintf(`{ "op": "add", "path": "/metadata/annotations/%s", "value": %s }`, key, string(valueBytes)), nil
+
 }

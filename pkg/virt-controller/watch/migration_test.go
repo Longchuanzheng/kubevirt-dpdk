@@ -134,6 +134,14 @@ var _ = Describe("Migration watcher", func() {
 			return true, nil, nil
 		})
 	}
+	shouldExpectPodPatched := func() {
+		// Expect pod Patched
+		kubeClient.Fake.PrependReactor("patch", "pods", func(action testing.Action) (handled bool, obj k8sruntime.Object, err error) {
+			_, ok := action.(testing.PatchAction)
+			Expect(ok).To(BeTrue())
+			return true, nil, nil
+		})
+	}
 
 	shouldExpectAttachmentPodCreation := func(uid types.UID, migrationUid types.UID) {
 		// Expect pod creation
@@ -585,6 +593,9 @@ var _ = Describe("Migration watcher", func() {
 				})
 
 			shouldExpectPodCreation(vmi.UID, migration.UID, 1, 0, 0)
+			patch := fmt.Sprintf(`[{ "op": "add", "path": "/status/migrationName", "value": "%s" }]`, migration.Name)
+			shouldExpectVirtualMachineInstancePatch(vmi, patch)
+
 			controller.Execute()
 			testutils.ExpectEvents(recorder, SuccessfulCreatePodReason)
 		})
@@ -595,6 +606,9 @@ var _ = Describe("Migration watcher", func() {
 			addMigration(migration)
 			addVirtualMachineInstance(vmi)
 			shouldExpectPodCreation(vmi.UID, migration.UID, 1, 0, 0)
+			shouldExpectPodPatched()
+			patch := fmt.Sprintf(`[{ "op": "add", "path": "/status/migrationName", "value": "%s" }]`, migration.Name)
+			shouldExpectVirtualMachineInstancePatch(vmi, patch)
 
 			controller.Execute()
 			testutils.ExpectEvents(recorder, SuccessfulCreatePodReason)
@@ -612,6 +626,7 @@ var _ = Describe("Migration watcher", func() {
 
 			addMigration(migration)
 			addVirtualMachineInstance(vmi)
+			shouldExpectPodPatched()
 
 			controller.Execute()
 		})

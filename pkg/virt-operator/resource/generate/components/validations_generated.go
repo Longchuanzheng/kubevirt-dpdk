@@ -11854,6 +11854,10 @@ var CRDsValidation map[string]string = map[string]string{
           description: 'Represents the method using which the vmi can be migrated:
             live migration or block migration'
           type: string
+        migrationName:
+          description: This represents current migration name because MigrationState
+            update until target pod create
+          type: string
         migrationState:
           description: Represents the status of a live migration
           properties:

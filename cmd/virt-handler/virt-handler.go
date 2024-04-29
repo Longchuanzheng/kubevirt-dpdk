@@ -262,6 +262,8 @@ func (app *virtHandlerApp) Run() {
 	vmiSourceInformer := factory.VMISourceHost(app.HostOverride)
 	vmiTargetInformer := factory.VMITargetHost(app.HostOverride)
 
+	podInformer := factory.KubeVirtPod()
+
 	// Wire Domain controller
 	domainSharedInformer, err := virtcache.NewSharedInformer(app.VirtShareDir, int(app.WatchdogTimeoutDuration.Seconds()), recorder, vmiSourceInformer.GetStore(), time.Duration(app.domainResyncPeriodSeconds)*time.Second)
 	if err != nil {
@@ -373,6 +375,7 @@ func (app *virtHandlerApp) Run() {
 		vmiTargetInformer,
 		domainSharedInformer,
 		gracefulShutdownInformer,
+		podInformer,
 		int(app.WatchdogTimeoutDuration.Seconds()),
 		app.MaxDevices,
 		app.clusterConfig,

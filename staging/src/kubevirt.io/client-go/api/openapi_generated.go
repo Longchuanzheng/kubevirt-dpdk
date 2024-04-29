@@ -23785,6 +23785,13 @@ func schema_kubevirtio_api_core_v1_VirtualMachineInstanceStatus(ref common.Refer
 							Format:      "",
 						},
 					},
+					"migrationName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "This represents current migration name because MigrationState update until target pod create",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"qosClass": {
 						SchemaProps: spec.SchemaProps{
 							Description: "The Quality of Service (QOS) classification assigned to the virtual machine instance based on resource requirements See PodQOSClass type for available QOS classes More info: https://git.k8s.io/community/contributors/design-proposals/node/resource-qos.md\n\nPossible enum values:\n - `\"BestEffort\"` is the BestEffort qos class.\n - `\"Burstable\"` is the Burstable qos class.\n - `\"Guaranteed\"` is the Guaranteed qos class.",
