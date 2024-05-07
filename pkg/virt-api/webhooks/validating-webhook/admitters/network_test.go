@@ -67,7 +67,7 @@ var _ = Describe("Validating VMI network spec", func() {
 		Expect(validateInterfaceStateValue(k8sfield.NewPath("fake"), &vm.Spec)).To(
 			ConsistOf(metav1.StatusCause{
 				Type:    "FieldValueInvalid",
-				Message: "\"foo\" interface's state \"absent\" is supported only for bridge,vhostuser binding",
+				Message: "\"foo\" interface's state \"absent\" is supported only for bridge, vhostuser binding",
 				Field:   "fake.domain.devices.interfaces[0].state",
 			}))
 	})
